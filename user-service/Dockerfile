@@ -1,3 +1,5 @@
+# SIT722 OnTrack 8.1P - User-Service Image for Staging and Prod Environment
+
 FROM python:3.12-slim
 
 WORKDIR /app

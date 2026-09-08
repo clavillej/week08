@@ -197,3 +197,14 @@ cython_debug/
 .cursorindexingignore
 
 node_modules/
+
+# Terraform local files and credentials
+# Added as part of SIT722-8.1P Ontrack - CJ - Sept82026
+
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+azure-credentials.json
