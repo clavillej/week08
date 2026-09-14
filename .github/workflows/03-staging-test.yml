@@ -9,6 +9,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   smoke-test:
     name: Staging Smoke Test
@@ -21,6 +25,27 @@ jobs:
       name: staging
 
     steps:
+      - name: Download staging image SHA
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-image-sha
+          path: deployment-metadata
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Validate staging image SHA
+        shell: bash
+        run: |
+          IMAGE_TAG=$(cat deployment-metadata/staging-image-sha.txt)
+
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid or missing staging image SHA."
+            exit 1
+          fi
+
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "Expected staging image SHA: $IMAGE_TAG"
+
       - name: Login to Azure
         uses: azure/login@v3
         with:
@@ -32,6 +57,33 @@ jobs:
             --resource-group ${{ vars.AKS_RESOURCE_GROUP }} \
             --name ${{ vars.AKS_CLUSTER_NAME }} \
             --overwrite-existing
+
+      - name: Verify staging image versions
+        shell: bash
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+        run: |
+          set -euo pipefail
+
+          for SERVICE in frontend user-service student-service lecturer-service course-service enrollment-service; do
+            EXPECTED_IMAGE="${ACR_LOGIN_SERVER}/koalatech-${SERVICE}:${IMAGE_TAG}"
+
+            ACTUAL_IMAGE=$(kubectl get deployment "$SERVICE" \
+              -n staging \
+              -o jsonpath="{.spec.template.spec.containers[?(@.name=='${SERVICE}')].image}")
+
+            echo "$SERVICE: $ACTUAL_IMAGE"
+
+            if [ "$ACTUAL_IMAGE" != "$EXPECTED_IMAGE" ]; then
+              echo "Image mismatch for $SERVICE."
+              echo "Expected: $EXPECTED_IMAGE"
+              exit 1
+            fi
+
+            kubectl rollout status deployment/"$SERVICE" \
+              -n staging \
+              --timeout=300s
+          done
 
       - name: Wait for staging frontend IP
         run: |
@@ -61,3 +113,11 @@ jobs:
             --retry 10 \
             --retry-delay 5 \
             http://${{ env.FRONTEND_IP }}
+
+      - name: Upload tested image SHA
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-image-sha
+          path: deployment-metadata/staging-image-sha.txt
+          if-no-files-found: error
+          retention-days: 7
