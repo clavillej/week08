@@ -15,7 +15,11 @@ jobs:
     runs-on: ubuntu-latest
 
     if: >
-      ${{ github.event.workflow_run.conclusion == 'success' }}
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.event == 'push' ||
+           github.event.workflow_run.event == 'workflow_dispatch') }}
 
     environment:
       name: staging
@@ -149,3 +153,17 @@ jobs:
           kubectl get pods -n staging
           kubectl get services -n staging
           kubectl get pvc -n staging
+
+      - name: Record staging image SHA
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          printf '%s\n' "$IMAGE_TAG" > staging-image-sha.txt
+
+      - name: Upload staging image SHA
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-image-sha
+          path: staging-image-sha.txt
+          if-no-files-found: error
+          retention-days: 7
