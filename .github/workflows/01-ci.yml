@@ -140,19 +140,19 @@ jobs:
 
 
   # =========================================================
-  # Build and Push Docker Images
+  # Build, Scan and Push Docker Images
   # =========================================================
   build-and-push:
     name: Build and Push ${{ matrix.image }}
     runs-on: ubuntu-latest
 
-  # Backend tests and Terraform validation must pass before building
+    permissions:
+      contents: read
+
+    # Backend tests and Terraform validation must pass before building
     needs:
       - backend-test
       - terraform-validation
-
-    # Build and push when code is pushed to main or manually triggered
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     strategy:
       fail-fast: false
@@ -182,23 +182,66 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Build Docker image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t ${{ matrix.image }}:${{ github.sha }} \
+            ./${{ matrix.service }}
+
+    # Build Docker
+
+      - name: Docker Scout vulnerability report
+        uses: docker/scout-action@v1
+        with:
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          command: cves
+          image: local://${{ matrix.image }}:${{ github.sha }}
+          sarif-file: scout-${{ matrix.image }}.sarif
+          summary: true
+          write-comment: false
+          # Report findings during initial integration.
+          exit-code: false
+
+      - name: Docker Scout recommendations
+        uses: docker/scout-action@v1
+        with:
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          command: recommendations
+          image: local://${{ matrix.image }}:${{ github.sha }}
+          summary: true
+          write-comment: false
+
+      - name: Upload Docker Scout report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scout-${{ matrix.image }}-${{ github.run_id }}
+          path: scout-${{ matrix.image }}.sarif
+          if-no-files-found: warn
+          retention-days: 7
+
+    # Login to Azure
+
       - name: Login to Azure
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Login to Azure Container Registry
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           az acr login --name ${{ vars.ACR_NAME }}
 
-      - name: Build Docker image
+      - name: Tag and push scanned image
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
-          docker build \
-            --platform linux/amd64 \
-            -t ${{ vars.ACR_LOGIN_SERVER }}/${{ matrix.image }}:${{ github.sha }} \
-            ./${{ matrix.service }}
+          docker tag \
+            ${{ matrix.image }}:${{ github.sha }} \
+            ${{ vars.ACR_LOGIN_SERVER }}/${{ matrix.image }}:${{ github.sha }}
 
-      - name: Push Docker image with commit SHA
-        run: |
           docker push \
             ${{ vars.ACR_LOGIN_SERVER }}/${{ matrix.image }}:${{ github.sha }}
