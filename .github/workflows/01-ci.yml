@@ -54,7 +54,7 @@ jobs:
   # =========================================================
   backend-test:
     name: Test ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -144,7 +144,7 @@ jobs:
   # =========================================================
   build-and-push:
     name: Build and Push ${{ matrix.image }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
