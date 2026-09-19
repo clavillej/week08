@@ -16,6 +16,39 @@ on:
 
 jobs:
 
+# ===================================
+# Terraform Configuration Validation
+# ===================================
+
+  terraform-validation:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Initialise Terraform for validation
+        run: terraform init -backend=false -input=false -lockfile=readonly
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check
+
+      - name: Validate Terraform configuration
+        run: terraform validate -no-color
+
   # =========================================================
   # Backend Tests
   # =========================================================
@@ -113,9 +146,10 @@ jobs:
     name: Build and Push ${{ matrix.image }}
     runs-on: ubuntu-latest
 
-    # All backend tests must pass before this job starts
+  # Backend tests and Terraform validation must pass before building
     needs:
       - backend-test
+      - terraform-validation
 
     # Build and push when code is pushed to main or manually triggered
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
