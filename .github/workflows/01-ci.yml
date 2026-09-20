@@ -16,12 +16,12 @@ on:
 
 jobs:
 
-# ===================================
-# Terraform Configuration Validation
-# ===================================
+# =============================================
+# Terraform Configuration Validation and Plan
+# =============================================
 
   terraform-validation:
-    name: Validate Terraform
+    name: Validate Terraform and Plan
     runs-on: ubuntu-24.04
 
     permissions:
@@ -35,12 +35,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Login to Azure for Terraform
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Verify Azure subscription
+        run: |
+          az account show \
+            --query "{Subscription:name, SubscriptionID:id, State:state}" \
+            --output table
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"
 
-      - name: Initialise Terraform for validation
+      - name: Initialise Terraform
         run: terraform init -backend=false -input=false -lockfile=readonly
 
       - name: Check Terraform formatting
@@ -48,6 +59,9 @@ jobs:
 
       - name: Validate Terraform configuration
         run: terraform validate -no-color
+
+      - name: Create Terraform plan
+        run: terraform plan -input=false -no-color
 
   # =========================================================
   # Backend Tests
