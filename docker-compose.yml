@@ -7,7 +7,7 @@ services:
     image: koalatech-frontend:v1
     container_name: koalatech-frontend
     ports:
-      - "3000:80"
+      - "127.0.0.1:18080:80"
     depends_on:
       user-service:
         condition: service_started

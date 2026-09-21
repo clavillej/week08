@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from fastapi import FastAPI
 from sqlalchemy import select
@@ -139,3 +140,8 @@ def health_check() -> dict[str, str]:
         "status": "healthy",
         "service": "user-service",
     }
+
+Instrumentator(
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics"],
+).instrument(app).expose(app, include_in_schema=False)
